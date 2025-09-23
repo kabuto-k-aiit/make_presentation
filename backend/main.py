@@ -513,3 +513,10 @@ async def generate_slides(
             status_code=500,
             detail=f"予期せぬエラーが発生しました: {str(e)}"
         )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
