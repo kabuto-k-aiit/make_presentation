@@ -26,6 +26,7 @@ export default function RegisterPage() {
     username: '',
     password: '',
     confirmPassword: '',
+    inviteCode: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,6 +42,7 @@ export default function RegisterPage() {
         email: credentials.email,
         username: credentials.username,
         password: credentials.password,
+        invite_code: credentials.inviteCode,
       })).unwrap();
       router.push('/');  // 登録成功時にホームページにリダイレクト
     } catch {
@@ -112,6 +114,18 @@ export default function RegisterPage() {
             autoComplete="new-password"
             value={credentials.confirmPassword}
             onChange={(e) => setCredentials({ ...credentials, confirmPassword: e.target.value })}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="inviteCode"
+            label="招待コード"
+            id="invite-code"
+            placeholder="招待コードを入力してください"
+            value={credentials.inviteCode}
+            onChange={(e) => setCredentials({ ...credentials, inviteCode: e.target.value })}
+            helperText="管理者から提供された招待コードが必要です"
           />
           <Button
             type="submit"

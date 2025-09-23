@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, text
 from database import Base
 from models.user import User
 from models.password_reset import PasswordReset
+from models.invite_codes import InviteCode
 
 
 def init_database():
@@ -63,7 +64,7 @@ def init_database():
         # テーブル構造を確認
         print(f"\n🔍 テーブル構造確認:")
         
-        for table_name in ['users', 'password_resets']:
+        for table_name in ['app_users', 'password_resets', 'invite_codes']:
             print(f"\n📋 {table_name} テーブル:")
             with engine.connect() as conn:
                 result = conn.execute(text(f"""
