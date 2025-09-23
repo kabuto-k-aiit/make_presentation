@@ -3,6 +3,8 @@ import json
 import os
 import time
 import re
+import glob
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from dotenv import load_dotenv
@@ -17,6 +19,7 @@ from routers import password_reset
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from database import SessionLocal, engine
 from models.user import Base, User
@@ -77,6 +80,33 @@ async def startup():
 @app.get("/", dependencies=[Depends(RateLimiter(times=10, seconds=60))])
 async def root():
     return {"message": "Welcome to the Presentation Generator API"}
+
+# ヘルスチェックエンドポイント（Railway用）
+@app.get("/health")
+async def health_check():
+    """Railway ヘルスチェック用エンドポイント"""
+    try:
+        # データベース接続確認
+        db = next(get_db())
+        db.execute(text("SELECT 1"))
+        db.close()
+        
+        # Redis接続確認
+        redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        await redis_client.ping()
+        await redis_client.close()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "redis": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Health check failed: {str(e)}"
+        )
 
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -207,6 +237,23 @@ def create_powerpoint(slides_data, theme):
     prs.save(filepath)
     print(f"PowerPoint file saved at: {filepath}")  # デバッグ用ログ
     return filename  # パスではなくファイル名のみを返す
+
+
+def cleanup_old_files():
+    """24時間以上古いPowerPointファイルを削除"""
+    try:
+        current_time = time.time()
+        for filename in os.listdir(OUTPUT_DIR):
+            if filename.endswith('.pptx'):
+                filepath = os.path.join(OUTPUT_DIR, filename)
+                if os.path.isfile(filepath):
+                    file_age = current_time - os.path.getctime(filepath)
+                    # 24時間以上古いファイルを削除
+                    if file_age > (24 * 3600):
+                        os.remove(filepath)
+                        print(f"Deleted old file: {filename}")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
 
 # ファイルダウンロード用エンドポイント
@@ -362,7 +409,10 @@ async def generate_slides(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        # APIキーの存在確認とログ出力
+        # 古いファイルを削除
+        cleanup_old_files()
+        
+        # Gemini API key check
         print(f"API Key exists: {bool(GOOGLE_API_KEY)}")
         if not GOOGLE_API_KEY:
             raise HTTPException(status_code=500, detail="API key is not configured")
