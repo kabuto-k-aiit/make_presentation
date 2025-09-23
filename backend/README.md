@@ -27,7 +27,7 @@ pip install -r requirements.txt
 pip freeze > requirements.txt
 ```
 
-サーバー実行
+サーバー起動
 ```
 uvicorn main:app --reload
 ```
