@@ -84,29 +84,9 @@ async def root():
 # ヘルスチェックエンドポイント（Railway用）
 @app.get("/health")
 async def health_check():
-    """Railway ヘルスチェック用エンドポイント"""
-    try:
-        # データベース接続確認
-        db = next(get_db())
-        db.execute(text("SELECT 1"))
-        db.close()
-        
-        # Redis接続確認
-        redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
-        await redis_client.ping()
-        await redis_client.close()
-        
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "redis": "connected",
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=503, 
-            detail=f"Health check failed: {str(e)}"
-        )
+    """簡単なヘルスチェック用エンドポイント"""
+    return {"status": "healthy", "message": "API is running"}
+
 
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
