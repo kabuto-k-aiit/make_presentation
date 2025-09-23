@@ -1,15 +1,28 @@
 'use client';
 
 import { useTokenRefresh } from '@/hooks/useTokenRefresh';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  // トークンリフレッシュのロジックを使用
-  useTokenRefresh();
+  const [isClient, setIsClient] = useState(false);
 
-  return <>{children}</>;
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  return (
+    <>
+      {isClient && <ClientOnlyTokenRefresh />}
+      {children}
+    </>
+  );
+};
+
+const ClientOnlyTokenRefresh = () => {
+  useTokenRefresh();
+  return null;
 };

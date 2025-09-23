@@ -31,7 +31,7 @@ export default function LoginPage() {
     try {
       await dispatch(login(credentials)).unwrap();
       router.push('/');  // ログイン成功時にホームページにリダイレクト
-    } catch (err) {
+    } catch {
       // エラーはReduxのstateで処理されます
     }
   };

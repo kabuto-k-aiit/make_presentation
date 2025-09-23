@@ -1,6 +1,7 @@
 interface PasswordValidationResult {
   isValid: boolean;
   errors: string[];
+  strengthScore: number;
 }
 
 export const validatePassword = (password: string): PasswordValidationResult => {

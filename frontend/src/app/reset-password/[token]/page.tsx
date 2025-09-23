@@ -68,8 +68,8 @@ export default function ResetPasswordPage({ params }: ResetPasswordPageProps) {
       setTimeout(() => {
         router.push('/login');
       }, 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エラーが発生しました');
     } finally {
       setLoading(false);
     }

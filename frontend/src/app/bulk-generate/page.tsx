@@ -1,71 +1,63 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import type { RootState } from '@/store/store';
+import type { RootState, AppDispatch } from '@/store/store';
 import {
   setTheme,
   setSlideCount,
-  setLoading,
-  setMessage,
-  setSlides,
-  setGeneratedFileName,
+  clearError,
+  generateSlides,
+  downloadPresentation,
+  selectError,
+  selectIsLoading,
 } from '@/store/presentationSlice';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 export default function BulkGenerate() {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const {
     theme,
     slideCount,
-    isLoading,
-    message,
     slides,
     generatedFileName
   } = useSelector((state: RootState) => state.presentation);
+  const error = useSelector(selectError);
+  const isLoading = useSelector(selectIsLoading);
+
+  // 認証状態を確認
+  useRequireAuth();
+
+  // エラーメッセージをクリア
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
 
   const handleGenerate = async () => {
-    dispatch(setLoading(true));
-    dispatch(setMessage('スライドを生成中です... しばらくお待ちください。'));
-
     try {
-      const payload = {
-        theme,
-        slideCount,
-      };
-
-      const response = await fetch('http://localhost:8000/generate-slides', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error('API呼び出しに失敗しました。');
-      }
-
-      const result = await response.json();
-      dispatch(setSlides(result.data.slides));
-      dispatch(setGeneratedFileName(result.pptxFile));
-      dispatch(setMessage('✅ スライドのデータが正常に生成されました。'));
-
-    } catch (error: any) {
-      dispatch(setMessage(`❌ スライドの生成中にエラーが発生しました: ${error.message}`));
-    } finally {
-      dispatch(setLoading(false));
+      await dispatch(generateSlides({ theme, slideCount })).unwrap();
+    } catch {
+      // エラーはReduxのstateで処理されます
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (generatedFileName) {
-      const filename = generatedFileName.split('/').pop();
-      const downloadUrl = `http://localhost:8000/download/${filename}`;
-      const downloadLink = document.createElement('a');
-      downloadLink.href = downloadUrl;
-      downloadLink.download = filename || 'presentation.pptx';
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+      try {
+        const blob = await dispatch(downloadPresentation(generatedFileName)).unwrap();
+        const url = window.URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = generatedFileName;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        window.URL.revokeObjectURL(url);
+      } catch {
+        // エラーはReduxのstateで処理されます
+      }
     }
   };
 
@@ -110,7 +102,7 @@ export default function BulkGenerate() {
         {isLoading ? '生成中...' : 'スライドを生成'}
       </button>
 
-      {message && <p className="message">{message}</p>}
+      {error && <p className="error message">{error}</p>}
 
       {slides.length > 0 && (
         <div className="slides-container">

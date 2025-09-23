@@ -14,8 +14,55 @@
 ```
 make_presentation/
 ├── frontend/          # Next.js フロントエンド
-├── backend/           # FastAPI バックエンド
-└── docs/             # 追加のドキュメント
+├── backend/          # FastAPI バックエンド
+├── docs/            # 追加のドキュメント
+└── docker/          # Docker関連ファイル
+```
+
+## Docker環境での開発
+
+### 1. Docker環境の起動
+
+```bash
+docker-compose up -d
+
+# ログを確認
+docker-compose logs -f
+```
+
+### 2. コンテナの停止
+
+```bash
+docker-compose down
+```
+
+### 3. コンテナとボリュームの完全削除
+
+```bash
+docker-compose down -v
+```
+
+### 4. 個別のサービスの再起動
+
+```bash
+# フロントエンドの再起動
+docker-compose restart frontend
+
+# バックエンドの再起動
+docker-compose restart backend
+```
+
+### 5. コンテナ内でのコマンド実行
+
+```bash
+# バックエンドでのマイグレーション実行
+docker-compose exec backend alembic upgrade head
+
+# フロントエンドでのパッケージインストール
+docker-compose exec frontend npm install
+
+# データベースへの接続
+docker-compose exec db psql -U postgres -d presentation_db
 ```
 
 ## 開発環境のセットアップ

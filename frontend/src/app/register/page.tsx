@@ -43,7 +43,7 @@ export default function RegisterPage() {
         password: credentials.password,
       })).unwrap();
       router.push('/');  // 登録成功時にホームページにリダイレクト
-    } catch (err) {
+    } catch {
       // エラーはReduxのstateで処理されます
     }
   };

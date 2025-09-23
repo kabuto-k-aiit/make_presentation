@@ -1,17 +1,16 @@
 'use client';
 
 import { useDispatch, useSelector } from 'react-redux';
-import type { RootState } from '@/store/store';
+import type { RootState, AppDispatch } from '@/store/store';
 import {
   setTheme,
-  setLoading,
-  setMessage,
-  setSlides,
-  setGeneratedFileName,
+  setSlideCount,
+  generateSlides,
+  downloadPresentation,
 } from '@/store/presentationSlice';
 
 export default function OneGenerate() {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const {
     theme,
     isLoading,
@@ -21,58 +20,37 @@ export default function OneGenerate() {
   } = useSelector((state: RootState) => state.presentation);
 
   const handleGenerateOne = async () => {
-    dispatch(setLoading(true));
-    dispatch(setMessage('スライドを生成中です... しばらくお待ちください。'));
-
     try {
-      const payload = {
-        theme,
-        slideCount: 1, // 1枚のみ生成
-      };
-
-      const response = await fetch('http://localhost:8000/generate-slides', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error('API呼び出しに失敗しました。');
-      }
-
-      const result = await response.json();
-      // 既存のスライドに新しいスライドを追加
-      const newSlides = [...slides, ...result.data.slides];
-      dispatch(setSlides(newSlides));
-      dispatch(setGeneratedFileName(result.pptxFile));
-      dispatch(setMessage('✅ スライドが正常に生成されました。'));
-
-    } catch (error: any) {
-      dispatch(setMessage(`❌ スライドの生成中にエラーが発生しました: ${error.message}`));
-    } finally {
-      dispatch(setLoading(false));
+      await dispatch(generateSlides({ theme, slideCount: 1 }));
+    } catch (error) {
+      // エラーはスライスのextraReducersで処理されます
+      console.error('スライド生成エラー:', error);
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (generatedFileName) {
-      const filename = generatedFileName.split('/').pop();
-      const downloadUrl = `http://localhost:8000/download/${filename}`;
-      const downloadLink = document.createElement('a');
-      downloadLink.href = downloadUrl;
-      downloadLink.download = filename || 'presentation.pptx';
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+      try {
+        const blob = await dispatch(downloadPresentation(generatedFileName)).unwrap();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = generatedFileName;
+        document.body.appendChild(link);
+        link.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      } catch (error) {
+        // エラーはスライスのextraReducersで処理されます
+        console.error('ダウンロードエラー:', error);
+      }
     }
   };
 
   const handleClearSlides = () => {
-    dispatch(setSlides([]));
-    dispatch(setGeneratedFileName(null));
-    dispatch(setMessage(''));
+    // スライスの状態をリセットする
+    dispatch(setTheme(''));
+    dispatch(setSlideCount(0));
   };
 
   return (

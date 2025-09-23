@@ -8,7 +8,7 @@ import { jwtDecode } from 'jwt-decode';
 
 interface JWTPayload {
   exp: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export const useTokenRefresh = () => {
@@ -16,7 +16,8 @@ export const useTokenRefresh = () => {
   const auth = useSelector(selectAuth);
 
   useEffect(() => {
-    if (!auth.token) return;
+    // サーバーサイドレンダリング中やトークンがない場合は何もしない
+    if (typeof window === 'undefined' || !auth.token) return;
 
     const checkTokenExpiration = () => {
       try {
