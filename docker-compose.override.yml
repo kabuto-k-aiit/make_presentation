@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  frontend:
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+    
+  backend:
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=1
