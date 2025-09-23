@@ -1,0 +1,27 @@
+# Railway 環境変数設定
+# 以下の環境変数をRailway Dashboardで設定してください
+
+# データベース設定（Supabase）
+DATABASE_URL=postgresql://postgres:rpx5c4rhKUvjYM%40@db.qxjvuaeqlratcdjsatsj.supabase.co:5432/postgres
+
+# Redis設定（Upstash）
+REDIS_URL=rediss://default:ASXhAAImcDJmY2Q4N2I2M2ZlYzQ0ZjlmODdmM2E5ZjY0YjM5MWIyYXAyOTY5Nw@loving-polliwog-9697.upstash.io:6379
+REDIS_HOST=loving-polliwog-9697.upstash.io
+REDIS_PORT=6379
+REDIS_PASSWORD=ASXhAAImcDJmY2Q4N2I2M2ZlYzQ0ZjlmODdmM2E5ZjY0YjM5MWIyYXAyOTY5Nw
+
+# API Keys
+GEMINI_API_KEY=AIzaSyABSc3fujSEL2Q-eJIlKqTSmle3y23qTrw
+
+# JWT設定
+SECRET_KEY=development_secret_key_please_change_in_production
+REFRESH_SECRET_KEY=development_refresh_key_please_change_in_production
+
+# アプリケーション設定
+ENVIRONMENT=production
+PORT=8000
+CORS_ORIGINS=https://your-frontend.vercel.app,http://localhost:3000
+
+# 本番用強化設定
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
