@@ -8,9 +8,8 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
@@ -28,7 +27,7 @@ from auth.security import (
     verify_password, get_password_hash, create_access_token, create_refresh_token,
     check_login_attempts, increment_login_attempts, reset_login_attempts,
     get_remaining_lockout_time, log_security_event, verify_refresh_token,
-    invalidate_refresh_token
+    invalidate_refresh_token, get_current_user, get_db
 )
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -54,10 +53,6 @@ class UserCreate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
 
 
 # FastAPIアプリケーションの初期化
@@ -99,35 +94,6 @@ async def health_check():
 
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-# 依存性
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="無効な認証情報",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = db.query(User).filter(User.username == token_data.username).first()
-    if user is None:
-        raise credentials_exception
-    return user
 
 
 # CORS（クロスオリジン）設定を追加
