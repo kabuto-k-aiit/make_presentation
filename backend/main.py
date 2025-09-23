@@ -8,14 +8,14 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
 import redis.asyncio as redis
 from routers import password_reset
+from routers.invite_codes import router as invite_router
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
@@ -27,7 +27,7 @@ from auth.security import (
     verify_password, get_password_hash, create_access_token, create_refresh_token,
     check_login_attempts, increment_login_attempts, reset_login_attempts,
     get_remaining_lockout_time, log_security_event, verify_refresh_token,
-    invalidate_refresh_token
+    invalidate_refresh_token, get_current_user, get_db
 )
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -47,15 +47,12 @@ class UserCreate(BaseModel):
     email: EmailStr
     username: str
     password: str
+    invite_code: str  # 招待コード必須
 
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
 
 
 # FastAPIアプリケーションの初期化
@@ -70,15 +67,21 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
 
 # パスワードリセットルーターの追加
 app.include_router(password_reset.router, prefix="/auth", tags=["auth"])
+app.include_router(invite_router, prefix="/api", tags=["invite"])
 
 @app.on_event("startup")
 async def startup():
-    # Redisクライアントの初期化
-    redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
-    await FastAPILimiter.init(redis_client)
+    # Redisクライアントの初期化（一時的に無効化）
+    try:
+        redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(redis_client)
+        print("✅ Redis Rate Limiter initialized")
+    except Exception as e:
+        print(f"⚠️  Redis initialization failed: {e}")
+        print("🔄 Continuing without rate limiting")
 
-# レート制限を追加
-@app.get("/", dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+# レート制限なしのルート（デバッグ用）
+@app.get("/")
 async def root():
     return {"message": "Welcome to the Presentation Generator API"}
 
@@ -91,35 +94,6 @@ async def health_check():
 
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-# 依存性
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="無効な認証情報",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = db.query(User).filter(User.username == token_data.username).first()
-    if user is None:
-        raise credentials_exception
-    return user
 
 
 # CORS（クロスオリジン）設定を追加
@@ -221,18 +195,23 @@ def create_powerpoint(slides_data, theme):
 
 
 def cleanup_old_files():
-    """24時間以上古いPowerPointファイルを削除"""
+    """2時間以上古いPowerPointファイルを削除（容量節約のため）"""
     try:
         current_time = time.time()
+        deleted_count = 0
         for filename in os.listdir(OUTPUT_DIR):
             if filename.endswith('.pptx'):
                 filepath = os.path.join(OUTPUT_DIR, filename)
                 if os.path.isfile(filepath):
                     file_age = current_time - os.path.getctime(filepath)
-                    # 24時間以上古いファイルを削除
-                    if file_age > (24 * 3600):
+                    # 2時間以上古いファイルを削除（容量節約）
+                    if file_age > (2 * 3600):
                         os.remove(filepath)
+                        deleted_count += 1
                         print(f"Deleted old file: {filename}")
+        
+        if deleted_count > 0:
+            print(f"Cleanup completed: {deleted_count} files deleted")
     except Exception as e:
         print(f"Error during cleanup: {e}")
 
@@ -258,6 +237,33 @@ async def download_file(
 # 認証エンドポイント
 @app.post("/register", response_model=Token)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
+    # 招待コード検証
+    from models.invite_codes import InviteCode
+    invite = db.query(InviteCode).filter(
+        InviteCode.code == user.invite_code,
+        InviteCode.is_used.is_(False)
+    ).first()
+    
+    if not invite:
+        raise HTTPException(
+            status_code=400,
+            detail="無効な招待コードです"
+        )
+    
+    if invite.expires_at and invite.expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=400,
+            detail="招待コードの有効期限が切れています"
+        )
+    
+    # ユーザー数制限チェック（50人まで）
+    user_count = db.query(User).count()
+    if user_count >= 50:
+        raise HTTPException(
+            status_code=429,
+            detail="登録可能なユーザー数の上限に達しています"
+        )
+    
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(
@@ -281,6 +287,12 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    
+    # 招待コードを使用済みにマーク
+    invite.is_used = True
+    invite.used_by_email = user.email
+    invite.used_at = datetime.utcnow()
+    db.commit()
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -383,11 +395,12 @@ async def refresh_token(request: Request, current_token: str):
     }
 
 
-# スライド生成APIエンドポイント
+# スライド生成APIエンドポイント（レート制限: 3回/時間）
 @app.post("/generate-slides")
 async def generate_slides(
     request: SlideRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    rate_limit: bool = Depends(RateLimiter(times=3, hours=1))
 ):
     try:
         # 古いファイルを削除
@@ -513,3 +526,10 @@ async def generate_slides(
             status_code=500,
             detail=f"予期せぬエラーが発生しました: {str(e)}"
         )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
