@@ -11,10 +11,15 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
     "postgresql://postgres:postgres@localhost:5432/presentation_db"
 )
 
+# デバッグ用ログ
+print(f"🔍 DATABASE_URL: {SQLALCHEMY_DATABASE_URL[:50]}...")
+print(f"🔍 Environment: {os.getenv('ENVIRONMENT', 'Not set')}")
+
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()
