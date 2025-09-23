@@ -45,8 +45,8 @@ const initialState: AuthState = {
 // 認証関連のAPI呼び出し
 export const register = createAsyncThunk(
   'auth/register',
-  async (credentials: { email: string; username: string; password: string }) => {
-    const response = await fetch('http://localhost:8000/register', {
+  async (credentials: { email: string; username: string; password: string; invite_code: string }) => {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
