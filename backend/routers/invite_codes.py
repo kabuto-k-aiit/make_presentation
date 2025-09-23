@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import secrets
-from backend.database import get_db
-from backend.models.invite_codes import InviteCode
-from backend.models.user import User
-from backend.auth.security import get_current_user
+from database import get_db
+from models.invite_codes import InviteCode
+from models.user import User
+from auth.security import get_current_user
 from pydantic import BaseModel
 
 
@@ -34,13 +34,13 @@ async def verify_invite_code(
     if not invite:
         raise HTTPException(
             status_code=400,
-            detail="Invalid invite code"
+            detail="無効な招待コードです"
         )
     
     if invite.expires_at and invite.expires_at < datetime.utcnow():
         raise HTTPException(
             status_code=400,
-            detail="Invite code has expired"
+            detail="招待コードの有効期限が切れています"
         )
     
     return {
@@ -62,7 +62,7 @@ async def create_invite_code(
     if not first_user or current_user.id != first_user.id:
         raise HTTPException(
             status_code=403,
-            detail="Only admin can create invite codes"
+            detail="管理者のみ招待コードを作成できます"
         )
     
     # 招待コード生成
@@ -97,7 +97,7 @@ async def list_invite_codes(
     if not first_user or current_user.id != first_user.id:
         raise HTTPException(
             status_code=403,
-            detail="Only admin can view invite codes"
+            detail="管理者のみ招待コードを表示できます"
         )
     
     invites = db.query(InviteCode).order_by(InviteCode.created_at.desc()).all()
