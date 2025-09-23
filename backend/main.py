@@ -61,8 +61,9 @@ class TokenData(BaseModel):
 # FastAPIアプリケーションの初期化
 app = FastAPI()
 
-# データベース初期化
-Base.metadata.create_all(bind=engine)
+# データベース初期化は手動で実行（起動時は無効化）
+# Base.metadata.create_all(bind=engine)
+print("⚠️  注意: テーブル作成は init_database.py で事前実行済み")
 
 # Redisの設定
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
