@@ -3,11 +3,29 @@ import json
 import os
 import time
 import re
+from datetime import datetime, timedelta
+from typing import Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
+import redis.asyncio as redis
+from routers import password_reset
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
+from sqlalchemy.orm import Session
+
+from database import SessionLocal, engine
+from models.user import Base, User
+from auth.security import (
+    verify_password, get_password_hash, create_access_token, create_refresh_token,
+    check_login_attempts, increment_login_attempts, reset_login_attempts,
+    get_remaining_lockout_time, log_security_event, verify_refresh_token,
+    invalidate_refresh_token
+)
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -16,8 +34,82 @@ from pptx.dml.color import RGBColor
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# JWT認証関連の設定
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")  # 本番環境では必ず環境変数から読み込む
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # アクセストークンの有効期限（分）
+
+# Pydanticモデル
+class UserCreate(BaseModel):
+    email: EmailStr
+    username: str
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+
 # FastAPIアプリケーションの初期化
 app = FastAPI()
+
+# データベース初期化
+Base.metadata.create_all(bind=engine)
+
+# Redisの設定
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
+
+# パスワードリセットルーターの追加
+app.include_router(password_reset.router, prefix="/auth", tags=["auth"])
+
+@app.on_event("startup")
+async def startup():
+    # Redisクライアントの初期化
+    redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+    await FastAPILimiter.init(redis_client)
+
+# レート制限を追加
+@app.get("/", dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+async def root():
+    return {"message": "Welcome to the Presentation Generator API"}
+
+# OAuth2スキーマ
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+# 依存性
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="無効な認証情報",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = db.query(User).filter(User.username == token_data.username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
 
 # CORS（クロスオリジン）設定を追加
 origins = [
@@ -119,7 +211,10 @@ def create_powerpoint(slides_data, theme):
 
 # ファイルダウンロード用エンドポイント
 @app.get("/download/{filename}")
-async def download_file(filename: str):
+async def download_file(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
     # ファイル名から'output/'を取り除く
     clean_filename = filename.replace('output/', '')
     file_path = os.path.join(OUTPUT_DIR, clean_filename)
@@ -132,9 +227,140 @@ async def download_file(filename: str):
         )
     raise HTTPException(status_code=404, detail="File not found")
 
-# APIエンドポイントの定義
+# 認証エンドポイント
+@app.post("/register", response_model=Token)
+async def register(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if db_user:
+        raise HTTPException(
+            status_code=400,
+            detail="このメールアドレスは既に登録されています"
+        )
+    
+    db_user = db.query(User).filter(User.username == user.username).first()
+    if db_user:
+        raise HTTPException(
+            status_code=400,
+            detail="このユーザー名は既に使用されています"
+        )
+    
+    hashed_password = get_password_hash(user.password)
+    db_user = User(
+        email=user.email,
+        username=user.username,
+        hashed_password=hashed_password
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/token", response_model=Token)
+async def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    # ログイン試行回数をチェック
+    if not check_login_attempts(form_data.username):
+        remaining_time = get_remaining_lockout_time(form_data.username)
+        raise HTTPException(
+            status_code=429,
+            detail=f"アカウントがロックされています。{remaining_time}秒後に再試行してください。"
+        )
+
+    user = db.query(User).filter(User.username == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        # ログイン失敗を記録
+        increment_login_attempts(form_data.username)
+        log_security_event(
+            "login_failed",
+            form_data.username,
+            "Invalid username or password",
+            request.client.host
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="ユーザー名またはパスワードが間違っています"
+        )
+    
+    # ログイン成功：試行回数をリセット
+    reset_login_attempts(form_data.username)
+    log_security_event(
+        "login_success",
+        user.username,
+        "Successful login",
+        request.client.host
+    )
+
+    # アクセストークンとリフレッシュトークンを生成
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires
+    )
+    refresh_token = create_refresh_token(data={"sub": user.username})
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
+
+@app.post("/refresh", response_model=Token)
+async def refresh_token(request: Request, current_token: str):
+    """リフレッシュトークンを使用して新しいアクセストークンを取得する"""
+    username = verify_refresh_token(current_token)
+    if not username:
+        log_security_event(
+            "token_refresh_failed",
+            "unknown",
+            "Invalid refresh token",
+            request.client.host
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="無効なリフレッシュトークンです"
+        )
+
+    # 現在のリフレッシュトークンを無効化
+    invalidate_refresh_token(current_token)
+
+    # 新しいトークンを生成
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": username},
+        expires_delta=access_token_expires
+    )
+    refresh_token = create_refresh_token(data={"sub": username})
+
+    log_security_event(
+        "token_refresh_success",
+        username,
+        "Token refreshed successfully",
+        request.client.host
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
+
+# スライド生成APIエンドポイント
 @app.post("/generate-slides")
-async def generate_slides(request: SlideRequest):
+async def generate_slides(
+    request: SlideRequest,
+    current_user: User = Depends(get_current_user)
+):
     try:
         # APIキーの存在確認とログ出力
         print(f"API Key exists: {bool(GOOGLE_API_KEY)}")
