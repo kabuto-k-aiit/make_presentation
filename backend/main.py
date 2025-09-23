@@ -73,12 +73,17 @@ app.include_router(password_reset.router, prefix="/auth", tags=["auth"])
 
 @app.on_event("startup")
 async def startup():
-    # Redisクライアントの初期化
-    redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
-    await FastAPILimiter.init(redis_client)
+    # Redisクライアントの初期化（一時的に無効化）
+    try:
+        redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(redis_client)
+        print("✅ Redis Rate Limiter initialized")
+    except Exception as e:
+        print(f"⚠️  Redis initialization failed: {e}")
+        print("🔄 Continuing without rate limiting")
 
-# レート制限を追加
-@app.get("/", dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+# レート制限なしのルート（デバッグ用）
+@app.get("/")
 async def root():
     return {"message": "Welcome to the Presentation Generator API"}
 
@@ -513,3 +518,10 @@ async def generate_slides(
             status_code=500,
             detail=f"予期せぬエラーが発生しました: {str(e)}"
         )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
