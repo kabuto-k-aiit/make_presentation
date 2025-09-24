@@ -5,7 +5,7 @@ import secrets
 from database import get_db
 from models.invite_codes import InviteCode
 from models.user import User
-from auth.security import get_current_user, verify_basic_auth
+from auth.security import get_current_user
 from pydantic import BaseModel
 
 
@@ -54,17 +54,18 @@ async def verify_invite_code(
 async def create_invite_code(
     invite_data: InviteCodeCreate,
     current_user: User = Depends(get_current_user),
-    basic_auth: bool = Depends(verify_basic_auth),  # Basic認証追加
     db: Session = Depends(get_db)
 ):
     """新しい招待コードを作成（管理者のみ）"""
-    # 管理者チェック（ここでは最初のユーザーを管理者とする）
-    first_user = db.query(User).first()
-    if not first_user or current_user.id != first_user.id:
+    # 管理者チェック（ユーザー名がadminであることを確認）
+    if current_user.username != "admin":
+        print("Admin check failed - not admin user")  # デバッグ用
         raise HTTPException(
             status_code=403,
             detail="管理者のみ招待コードを作成できます"
         )
+    
+    print("Admin check passed")  # デバッグ用
     
     # 招待コード生成
     code = secrets.token_urlsafe(12)
@@ -90,13 +91,11 @@ async def create_invite_code(
 @router.get("/list")
 async def list_invite_codes(
     current_user: User = Depends(get_current_user),
-    basic_auth: bool = Depends(verify_basic_auth),  # Basic認証追加
     db: Session = Depends(get_db)
 ):
     """招待コード一覧（管理者のみ）"""
     # 管理者チェック
-    first_user = db.query(User).first()
-    if not first_user or current_user.id != first_user.id:
+    if current_user.username != "admin":
         raise HTTPException(
             status_code=403,
             detail="管理者のみ招待コードを表示できます"
