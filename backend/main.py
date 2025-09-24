@@ -7,6 +7,7 @@ import glob
 import threading
 from datetime import datetime, timedelta
 from typing import Optional
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -61,21 +62,11 @@ class RefreshTokenRequest(BaseModel):
 
 
 # FastAPIアプリケーションの初期化
-app = FastAPI()
-
-# データベース初期化は手動で実行（起動時は無効化）
-# Base.metadata.create_all(bind=engine)
-print("⚠️  注意: テーブル作成は init_database.py で事前実行済み")
-
-# Redisの設定
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
-
-# パスワードリセットルーターの追加
-app.include_router(password_reset.router, prefix="/auth", tags=["auth"])
-app.include_router(invite_router, prefix="/api", tags=["invite"])
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Redisの設定
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
+    
     # Redisクライアントの初期化（一時的に無効化）
     try:
         redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
@@ -84,6 +75,9 @@ async def startup():
     except Exception as e:
         print(f"⚠️  Redis initialization failed: {e}")
         print("🔄 Continuing without rate limiting")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # レート制限なしのルート（デバッグ用）
 @app.get("/")
