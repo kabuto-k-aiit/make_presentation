@@ -45,7 +45,7 @@ async def verify_invite_code(
     
     return {
         "valid": True,
-        "message": "Invite code is valid",
+        "message": "招待コードは有効です",
         "code": invite_data.code
     }
 
@@ -57,13 +57,15 @@ async def create_invite_code(
     db: Session = Depends(get_db)
 ):
     """新しい招待コードを作成（管理者のみ）"""
-    # 管理者チェック（ここでは最初のユーザーを管理者とする）
-    first_user = db.query(User).first()
-    if not first_user or current_user.id != first_user.id:
+    # 管理者チェック（ユーザー名がadminであることを確認）
+    if current_user.username != "admin":
+        print("Admin check failed - not admin user")  # デバッグ用
         raise HTTPException(
             status_code=403,
             detail="管理者のみ招待コードを作成できます"
         )
+    
+    print("Admin check passed")  # デバッグ用
     
     # 招待コード生成
     code = secrets.token_urlsafe(12)
@@ -93,8 +95,7 @@ async def list_invite_codes(
 ):
     """招待コード一覧（管理者のみ）"""
     # 管理者チェック
-    first_user = db.query(User).first()
-    if not first_user or current_user.id != first_user.id:
+    if current_user.username != "admin":
         raise HTTPException(
             status_code=403,
             detail="管理者のみ招待コードを表示できます"

@@ -134,6 +134,9 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Git configuration templates
+.gitmessage
+
 # Environments
 .env
 .envrc
@@ -143,6 +146,15 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Additional security files
+.env.local
+.env.*.local
+secrets/
+*.key
+*.pem
+admin_credentials.txt
+invite_codes.txt
 
 # Spyder project settings
 .spyderproject

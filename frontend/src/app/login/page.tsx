@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch } from '@/store/store';
-import { login, selectAuthError, selectAuthLoading } from '@/store/authSlice';
+import { login, selectAuthError, selectAuthLoading, selectIsAuthenticated } from '@/store/authSlice';
 import {
   Box,
   Button,
@@ -14,17 +14,28 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
+import { trackAuthEvent } from '@/utils/analytics';
 
 export default function LoginPage() {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
   const error = useSelector(selectAuthError);
   const loading = useSelector(selectAuthLoading);
+  const isAuthenticated = useSelector(selectIsAuthenticated);
 
   const [credentials, setCredentials] = useState({
     username: '',
     password: '',
   });
+
+  // ログイン成功時のイベント送信
+  useEffect(() => {
+    if (isAuthenticated) {
+      trackAuthEvent('login_success', {
+        method: 'username_password'
+      });
+    }
+  }, [isAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

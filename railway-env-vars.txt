@@ -17,6 +17,11 @@ GEMINI_API_KEY=AIzaSyABSc3fujSEL2Q-eJIlKqTSmle3y23qTrw
 SECRET_KEY=development_secret_key_please_change_in_production
 REFRESH_SECRET_KEY=development_refresh_key_please_change_in_production
 
+# Basic認証設定（管理者用）
+BASIC_AUTH_ENABLED=true
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=your-secure-admin-password-change-this
+
 # アプリケーション設定
 ENVIRONMENT=production
 PORT=8000

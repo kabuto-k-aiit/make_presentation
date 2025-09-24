@@ -4,9 +4,10 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from fastapi import HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 import os
+import secrets
 from dotenv import load_dotenv
 import uuid
 import redis
@@ -22,16 +23,32 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 
+# Basic認証設定
+BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "admin")
+BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "changeme123")
+BASIC_AUTH_ENABLED = os.getenv("BASIC_AUTH_ENABLED", "true").lower() == "true"
+
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+basic_auth = HTTPBasic()
 
 # Redis接続
-redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT", "6379")),
-    db=0,
-    decode_responses=True
-)
+redis_client = None
+
+def get_redis_client():
+    """Redisクライアントを取得（遅延初期化）"""
+    global redis_client
+    if redis_client is None:
+        redis_client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            db=0,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True
+        )
+    return redis_client
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -80,8 +97,13 @@ def verify_refresh_token(refresh_token: str) -> Optional[str]:
         jti: str = payload.get("jti")
         
         # トークンが無効化リストに含まれていないか確認
-        if redis_client.sismember("invalid_refresh_tokens", jti):
-            return None
+        try:
+            client = get_redis_client()
+            if client.sismember("invalid_refresh_tokens", jti):
+                return None
+        except Exception:
+            # Redis接続エラーの場合は検証をスキップ
+            pass
             
         return username
     except JWTError:
@@ -99,60 +121,90 @@ def invalidate_refresh_token(refresh_token: str) -> None:
             if exp:
                 ttl = exp - datetime.utcnow().timestamp()
                 if ttl > 0:
-                    redis_client.sadd("invalid_refresh_tokens", jti)
-                    redis_client.expire("invalid_refresh_tokens", int(ttl))
+                    try:
+                        client = get_redis_client()
+                        client.sadd("invalid_refresh_tokens", jti)
+                        client.expire("invalid_refresh_tokens", int(ttl))
+                    except Exception:
+                        # Redis接続エラーの場合は何もしない
+                        pass
     except JWTError:
         pass
 
 
 def check_login_attempts(username: str) -> bool:
     """ログイン試行回数をチェックする"""
-    key = f"login_attempts:{username}"
-    attempts = redis_client.get(key)
-    
-    if attempts is None:
-        return True
-    
-    if int(attempts) >= MAX_LOGIN_ATTEMPTS:
-        return False
+    try:
+        client = get_redis_client()
+        key = f"login_attempts:{username}"
+        attempts = client.get(key)
         
-    return True
+        if attempts is None:
+            return True
+        
+        if int(attempts) >= MAX_LOGIN_ATTEMPTS:
+            return False
+            
+        return True
+    except Exception:
+        # Redis接続エラーの場合はログインを許可
+        return True
 
 
 def increment_login_attempts(username: str) -> None:
     """ログイン試行回数を増やす"""
-    key = f"login_attempts:{username}"
-    pipe = redis_client.pipeline()
-    pipe.incr(key)
-    pipe.expire(key, LOCKOUT_DURATION_MINUTES * 60)  # 15分後に自動リセット
-    pipe.execute()
+    try:
+        client = get_redis_client()
+        key = f"login_attempts:{username}"
+        pipe = client.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, LOCKOUT_DURATION_MINUTES * 60)  # 15分後に自動リセット
+        pipe.execute()
+    except Exception:
+        # Redis接続エラーの場合は何もしない
+        pass
 
 
 def reset_login_attempts(username: str) -> None:
     """ログイン試行回数をリセットする"""
-    key = f"login_attempts:{username}"
-    redis_client.delete(key)
+    try:
+        client = get_redis_client()
+        key = f"login_attempts:{username}"
+        client.delete(key)
+    except Exception:
+        # Redis接続エラーの場合は何もしない
+        pass
 
 
 def get_remaining_lockout_time(username: str) -> int:
     """アカウントロックアウトの残り時間（秒）を取得する"""
-    key = f"login_attempts:{username}"
-    return redis_client.ttl(key)
+    try:
+        client = get_redis_client()
+        key = f"login_attempts:{username}"
+        return client.ttl(key)
+    except Exception:
+        # Redis接続エラーの場合は0を返す
+        return 0
 
 
 def log_security_event(event_type: str, username: str, details: str, ip_address: str) -> None:
     """セキュリティイベントをログに記録する"""
-    event = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "event_type": event_type,
-        "username": username,
-        "details": details,
-        "ip_address": ip_address
-    }
-    # セキュリティログをRedisリストに追加
-    redis_client.lpush("security_logs", str(event))
-    # 最大1万件までログを保持
-    redis_client.ltrim("security_logs", 0, 9999)
+    try:
+        client = get_redis_client()
+        event = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event_type": event_type,
+            "username": username,
+            "details": details,
+            "ip_address": ip_address
+        }
+        # セキュリティログをRedisリストに追加
+        client.lpush("security_logs", str(event))
+        # 最大1万件までログを保持
+        client.ltrim("security_logs", 0, 9999)
+    except Exception:
+        # Redis接続エラーの場合は何もしない
+        pass
 
 
 def get_db():
@@ -186,3 +238,28 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def verify_basic_auth(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    """Basic認証を検証する"""
+    if not BASIC_AUTH_ENABLED:
+        return True  # Basic認証が無効の場合はパス
+    
+    import secrets as sec_module  # 名前衝突を避ける
+    # 定数時間比較でタイミング攻撃を防ぐ
+    correct_username = sec_module.compare_digest(credentials.username, BASIC_AUTH_USERNAME)
+    correct_password = sec_module.compare_digest(credentials.password, BASIC_AUTH_PASSWORD)
+    
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="無効なBasic認証情報",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return True
+
+
+def get_basic_auth_user(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    """Basic認証のユーザー情報を取得（管理者用エンドポイント向け）"""
+    verify_basic_auth(credentials)
+    return {"username": credentials.username, "is_admin": True}
