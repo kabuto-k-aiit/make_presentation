@@ -15,7 +15,10 @@
 make_presentation/
 ├── frontend/          # Next.js フロントエンド
 ├── backend/          # FastAPI バックエンド
-├── docs/            # 追加のドキュメント
+├── docs/            # ドキュメント
+│   ├── analytics-setup.md    # GA4導入ガイド
+│   ├── invite-code-management.md  # 招待コード運用ガイド
+│   └── ...           # その他のドキュメント
 └── docker/          # Docker関連ファイル
 ```
 
@@ -135,6 +138,7 @@ npm run dev
 - TypeScript
 - Redux Toolkit
 - Material-UI
+- **Google Analytics 4** (ユーザー行動分析)
 
 ### バックエンド
 - FastAPI
@@ -148,14 +152,58 @@ npm run dev
 - JWTベースの認証システム
 - リフレッシュトークンによるセッション管理
 - パスワードのハッシュ化（bcrypt）
-- レート制限による保護
+- レート制限による保護（プレゼンテーション生成: 5回/時間、本番環境）
 - アカウントロックアウト機能
+
+### 開発環境でのレート制限解除
+
+開発時はレート制限を解除して効率的にテストできます：
+
+```env
+# .envファイルに追加
+DISABLE_RATE_LIMIT=true
+```
+
+これにより、レート制限が事実上無効化され（1000回/時間）、開発がスムーズになります。
+
+## アナリティクス
+
+Google Analytics 4 (GA4) を導入しており、以下のユーザー行動を分析できます：
+
+- **認証イベント**: ログイン/ログアウトの追跡
+- **プレゼンテーション生成**: テーマ、スライド数の分析
+- **ファイルダウンロード**: ダウンロード数の計測
+- **ユーザーエンゲージメント**: ページビュー、滞在時間
+
+### セットアップ方法
+
+1. [Google Analytics](https://analytics.google.com/) でGA4プロパティを作成
+2. **本番用ストリーム**: 実際のドメインで作成（localhostは使用不可）
+3. 測定IDを取得して `.env` の `NEXT_PUBLIC_GA_MEASUREMENT_ID` に設定
+4. **開発時は** `NEXT_PUBLIC_ENABLE_GA=false` でGA4を無効化
+5. **本番時は** `NEXT_PUBLIC_ENABLE_GA=true` でGA4を有効化
+
+詳細は [アナリティクス導入ガイド](./docs/analytics-setup.md) を参照してください。
 
 ## API ドキュメント
 
 バックエンドサーバー起動後、以下のURLでSwagger UIを確認できます：
 - http://localhost:8000/docs
 - http://localhost:8000/redoc
+
+### 認証API
+
+#### リフレッシュトークン
+```http
+POST /refresh
+Content-Type: application/json
+
+{
+  "current_token": "your_refresh_token_here"
+}
+```
+
+リフレッシュトークンを使用して新しいアクセストークンを取得します。トークンの有効期限が切れた場合に使用してください。
 
 ## コントリビューション
 

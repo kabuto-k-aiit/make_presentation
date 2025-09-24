@@ -56,6 +56,10 @@ class Token(BaseModel):
     token_type: str
 
 
+class RefreshTokenRequest(BaseModel):
+    current_token: str
+
+
 # FastAPIアプリケーションの初期化
 app = FastAPI()
 
@@ -134,6 +138,12 @@ except Exception as e:
 print("Available models:")
 for model in genai.list_models():
     print(f"- {model.name} ({model.supported_generation_methods})")
+
+# 環境変数からレート制限設定を取得
+DISABLE_RATE_LIMIT = os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true"
+RATE_LIMIT_TIMES = int(os.getenv("RATE_LIMIT_TIMES",
+                                 "1000" if DISABLE_RATE_LIMIT else "5"))
+RATE_LIMIT_HOURS = int(os.getenv("RATE_LIMIT_HOURS", "1"))
 
 # 出力ディレクトリの設定
 OUTPUT_DIR = "output"
@@ -362,7 +372,9 @@ async def login(
 
 
 @app.post("/refresh", response_model=Token)
-async def refresh_token(request: Request, current_token: str):
+async def refresh_token(request: Request, token_data: RefreshTokenRequest):
+    """リフレッシュトークンを使用して新しいアクセストークンを取得する"""
+    current_token = token_data.current_token
     """リフレッシュトークンを使用して新しいアクセストークンを取得する"""
     username = verify_refresh_token(current_token)
     if not username:
@@ -402,12 +414,14 @@ async def refresh_token(request: Request, current_token: str):
     }
 
 
-# スライド生成APIエンドポイント（レート制限: 3回/時間）
+# スライド生成APIエンドポイント
 @app.post("/generate-slides")
 async def generate_slides(
     request: SlideRequest,
     current_user: User = Depends(get_current_user),
-    rate_limit: bool = Depends(RateLimiter(times=3, hours=1))
+    rate_limit: bool = Depends(
+        RateLimiter(times=RATE_LIMIT_TIMES, hours=RATE_LIMIT_HOURS)
+    )
 ):
     try:
         # 古いファイルを削除

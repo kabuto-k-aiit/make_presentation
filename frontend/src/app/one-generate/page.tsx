@@ -8,6 +8,7 @@ import {
   generateSlides,
   downloadPresentation,
 } from '@/store/presentationSlice';
+import { trackPresentationEvent } from '@/utils/analytics';
 
 export default function OneGenerate() {
   const dispatch = useDispatch<AppDispatch>();
@@ -22,6 +23,12 @@ export default function OneGenerate() {
   const handleGenerateOne = async () => {
     try {
       await dispatch(generateSlides({ theme, slideCount: 1 }));
+      // スライド生成成功時のイベント送信
+      trackPresentationEvent('generate_slide', {
+        theme: theme,
+        slide_count: 1,
+        method: 'one_generate'
+      });
     } catch (error) {
       // エラーはスライスのextraReducersで処理されます
       console.error('スライド生成エラー:', error);
@@ -40,6 +47,13 @@ export default function OneGenerate() {
         link.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(link);
+
+        // ダウンロード成功時のイベント送信
+        trackPresentationEvent('download_presentation', {
+          file_name: generatedFileName,
+          slide_count: slides.length,
+          format: 'pptx'
+        });
       } catch (error) {
         // エラーはスライスのextraReducersで処理されます
         console.error('ダウンロードエラー:', error);
