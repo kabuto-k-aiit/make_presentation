@@ -6,6 +6,8 @@ import type { RootState, AppDispatch } from '@/store/store';
 import {
   setTheme,
   setSlideCount,
+  setIncludeCharts,
+  setStyle,
   clearError,
   generateSlides,
   downloadPresentation,
@@ -19,6 +21,8 @@ export default function BulkGenerate() {
   const {
     theme,
     slideCount,
+    includeCharts,
+    style,
     slides,
     generatedFileName
   } = useSelector((state: RootState) => state.presentation);
@@ -37,7 +41,7 @@ export default function BulkGenerate() {
 
   const handleGenerate = async () => {
     try {
-      await dispatch(generateSlides({ theme, slideCount })).unwrap();
+      await dispatch(generateSlides({ theme, slideCount, includeCharts, style })).unwrap();
     } catch {
       // エラーはReduxのstateで処理されます
     }
@@ -92,6 +96,37 @@ export default function BulkGenerate() {
           min="1"
           className="form-input"
         />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">
+          ビジュアル設定:
+        </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={includeCharts}
+              onChange={(e) => dispatch(setIncludeCharts(e.target.checked))}
+            />
+            チャート・グラフを含める
+          </label>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <label htmlFor="style" style={{ minWidth: '60px' }}>スタイル:</label>
+            <select
+              id="style"
+              value={style}
+              onChange={(e) => dispatch(setStyle(e.target.value))}
+              className="form-input"
+              style={{ flex: 1, maxWidth: '200px' }}
+            >
+              <option value="modern">モダン</option>
+              <option value="corporate">コーポレート</option>
+              <option value="creative">クリエイティブ</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <button

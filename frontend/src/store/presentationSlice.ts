@@ -9,6 +9,8 @@ interface Slide {
 interface PresentationState {
   theme: string;
   slideCount: number;
+  includeCharts: boolean;
+  style: string;
   isLoading: boolean;
   message: string;
   error: string | null;
@@ -19,6 +21,8 @@ interface PresentationState {
 const initialState: PresentationState = {
   theme: '',
   slideCount: 5,
+  includeCharts: true,
+  style: 'modern',
   isLoading: false,
   message: '',
   error: null,
@@ -29,7 +33,7 @@ const initialState: PresentationState = {
 // 非同期アクション
 export const generateSlides = createAsyncThunk(
   'presentation/generateSlides',
-  async (request: { theme: string; slideCount: number }, { getState }) => {
+  async (request: { theme: string; slideCount: number; includeCharts?: boolean; style?: string }, { getState }) => {
     const state = getState() as RootState;
     const token = state.auth.token;
 
@@ -95,6 +99,12 @@ export const presentationSlice = createSlice({
     setSlideCount: (state, action: PayloadAction<number>) => {
       state.slideCount = action.payload;
     },
+    setIncludeCharts: (state, action: PayloadAction<boolean>) => {
+      state.includeCharts = action.payload;
+    },
+    setStyle: (state, action: PayloadAction<string>) => {
+      state.style = action.payload;
+    },
     clearError: (state) => {
       state.error = null;
     },
@@ -134,6 +144,8 @@ export const presentationSlice = createSlice({
 export const {
   setTheme,
   setSlideCount,
+  setIncludeCharts,
+  setStyle,
   clearError,
 } = presentationSlice.actions;
 

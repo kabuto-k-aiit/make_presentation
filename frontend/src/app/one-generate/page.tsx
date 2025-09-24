@@ -22,7 +22,7 @@ export default function OneGenerate() {
 
   const handleGenerateOne = async () => {
     try {
-      await dispatch(generateSlides({ theme, slideCount: 1 }));
+      await dispatch(generateSlides({ theme, slideCount: 1, includeCharts: true, style: 'modern' }));
       // スライド生成成功時のイベント送信
       trackPresentationEvent('generate_slide', {
         theme: theme,
