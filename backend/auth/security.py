@@ -4,9 +4,10 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from fastapi import HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 import os
+import secrets
 from dotenv import load_dotenv
 import uuid
 import redis
@@ -22,8 +23,14 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 
+# Basic認証設定
+BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "admin")
+BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "changeme123")
+BASIC_AUTH_ENABLED = os.getenv("BASIC_AUTH_ENABLED", "true").lower() == "true"
+
 # OAuth2スキーマ
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+basic_auth = HTTPBasic()
 
 # Redis接続
 redis_client = redis.Redis(
@@ -186,3 +193,28 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def verify_basic_auth(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    """Basic認証を検証する"""
+    if not BASIC_AUTH_ENABLED:
+        return True  # Basic認証が無効の場合はパス
+    
+    import secrets as sec_module  # 名前衝突を避ける
+    # 定数時間比較でタイミング攻撃を防ぐ
+    correct_username = sec_module.compare_digest(credentials.username, BASIC_AUTH_USERNAME)
+    correct_password = sec_module.compare_digest(credentials.password, BASIC_AUTH_PASSWORD)
+    
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="無効なBasic認証情報",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return True
+
+
+def get_basic_auth_user(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    """Basic認証のユーザー情報を取得（管理者用エンドポイント向け）"""
+    verify_basic_auth(credentials)
+    return {"username": credentials.username, "is_admin": True}

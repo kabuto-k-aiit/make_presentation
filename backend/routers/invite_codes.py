@@ -5,7 +5,7 @@ import secrets
 from database import get_db
 from models.invite_codes import InviteCode
 from models.user import User
-from auth.security import get_current_user
+from auth.security import get_current_user, verify_basic_auth
 from pydantic import BaseModel
 
 
@@ -54,6 +54,7 @@ async def verify_invite_code(
 async def create_invite_code(
     invite_data: InviteCodeCreate,
     current_user: User = Depends(get_current_user),
+    basic_auth: bool = Depends(verify_basic_auth),  # Basic認証追加
     db: Session = Depends(get_db)
 ):
     """新しい招待コードを作成（管理者のみ）"""
@@ -89,6 +90,7 @@ async def create_invite_code(
 @router.get("/list")
 async def list_invite_codes(
     current_user: User = Depends(get_current_user),
+    basic_auth: bool = Depends(verify_basic_auth),  # Basic認証追加
     db: Session = Depends(get_db)
 ):
     """招待コード一覧（管理者のみ）"""
