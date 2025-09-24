@@ -13,7 +13,7 @@ COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションコードをコピー
-COPY . .
+COPY backend/ .
 
 # ポート設定（Railwayが動的に割り当て）
 EXPOSE ${PORT:-8000}
