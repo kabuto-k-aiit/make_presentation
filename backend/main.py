@@ -154,11 +154,21 @@ SLIDE_MARGIN = Inches(0.5)
 class SlideRequest(BaseModel):
     theme: str = Field(..., min_length=1)
     slideCount: int = Field(..., ge=1, le=20)  # 1から20枚までに制限
+    includeCharts: bool = Field(default=True)  # チャートを含めるかどうか
+    style: str = Field(default="modern", description="スライドスタイル: modern, corporate, creative")
 
 
-def create_powerpoint(slides_data, theme):
-    """PowerPointファイルを作成する関数"""
+def create_powerpoint(slides_data, theme, style="modern"):
+    """PowerPointファイルを作成する関数（ビジュアル要素対応）"""
     prs = Presentation()
+    
+    # テーマ別のカラースキーム設定
+    color_schemes = {
+        "modern": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"],
+        "corporate": ["#2e4057", "#3498db", "#e74c3c", "#27ae60", "#f39c12"],
+        "creative": ["#e91e63", "#9c27b0", "#3f51b5", "#00bcd4", "#8bc34a"]
+    }
+    colors = color_schemes.get(style, color_schemes["modern"])
     
     # タイトルスライドの作成
     title_slide_layout = prs.slide_layouts[0]
@@ -171,25 +181,47 @@ def create_powerpoint(slides_data, theme):
     
     # コンテンツスライドの作成
     for slide_data in slides_data:
-        content_slide_layout = prs.slide_layouts[1]
-        slide = prs.slides.add_slide(content_slide_layout)
+        layout_type = slide_data.get("layout", "content")
+        
+        if layout_type == "title":
+            slide_layout = prs.slide_layouts[0]  # タイトルスライド
+        elif layout_type == "two_content":
+            slide_layout = prs.slide_layouts[3] if len(prs.slide_layouts) > 3 else prs.slide_layouts[1]  # 2カラム
+        else:
+            slide_layout = prs.slide_layouts[1]  # 標準コンテンツ
+        
+        slide = prs.slides.add_slide(slide_layout)
         
         # タイトルの設定
-        title = slide.shapes.title
-        title.text = slide_data["title"]
+        if hasattr(slide, 'shapes') and slide.shapes.title:
+            slide.shapes.title.text = slide_data["title"]
         
-        # 本文の設定
-        body = slide.placeholders[1]
-        tf = body.text_frame
+        # コンテンツの設定
+        if "content" in slide_data and slide_data["content"]:
+            # 本文の設定
+            if len(slide.placeholders) > 1:
+                body = slide.placeholders[1]
+                tf = body.text_frame
+                
+                # 箇条書きの追加
+                for i, content_item in enumerate(slide_data["content"]):
+                    if i == 0:
+                        p = tf.paragraphs[0]
+                    else:
+                        p = tf.add_paragraph()
+                    p.text = content_item
+                    p.level = 0
         
-        # 箇条書きの追加
-        for i, content_item in enumerate(slide_data["content"]):
-            if i == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
-            p.text = content_item
-            p.level = 0
+        # ビジュアル要素の追加
+        visual_elements = slide_data.get("visualElements", {})
+        
+        # チャートの追加
+        if visual_elements.get("chartType") and visual_elements.get("chartType") != "none":
+            add_chart_to_slide(slide, visual_elements, colors)
+        
+        # アイコンの追加（簡易的な図形として）
+        if visual_elements.get("icons"):
+            add_icons_to_slide(slide, visual_elements["icons"], colors)
     
     # ファイルの保存
     filename = f"presentation_{int(time.time())}.pptx"
@@ -197,6 +229,87 @@ def create_powerpoint(slides_data, theme):
     prs.save(filepath)
     print(f"PowerPoint file saved at: {filepath}")  # デバッグ用ログ
     return filename  # パスではなくファイル名のみを返す
+
+
+def add_chart_to_slide(slide, visual_elements, colors):
+    """スライドにチャートを追加する関数"""
+    try:
+        from pptx.chart.data import ChartData
+        from pptx.enum.chart import XL_CHART_TYPE
+        from pptx.util import Inches
+        
+        chart_type = visual_elements.get("chartType", "bar")
+        chart_data = visual_elements.get("chartData", {})
+        
+        if not chart_data or "labels" not in chart_data or "values" not in chart_data:
+            return
+        
+        # チャートデータの作成
+        chart_data_obj = ChartData()
+        chart_data_obj.categories = chart_data["labels"]
+        chart_data_obj.add_series('Data', chart_data["values"])
+        
+        # チャートタイプの決定
+        if chart_type == "bar":
+            chart_type_enum = XL_CHART_TYPE.COLUMN_CLUSTERED
+        elif chart_type == "line":
+            chart_type_enum = XL_CHART_TYPE.LINE
+        elif chart_type == "pie":
+            chart_type_enum = XL_CHART_TYPE.PIE
+        else:
+            chart_type_enum = XL_CHART_TYPE.COLUMN_CLUSTERED
+        
+        # チャートの位置とサイズ
+        x, y, cx, cy = Inches(4), Inches(2), Inches(5), Inches(3)
+        
+        # チャートの追加
+        chart = slide.shapes.add_chart(
+            chart_type_enum, x, y, cx, cy, chart_data_obj
+        ).chart
+        
+        # チャートのスタイル設定
+        if hasattr(chart, 'chart_style'):
+            chart.chart_style = 1
+            
+    except Exception as e:
+        print(f"チャート追加エラー: {e}")
+
+
+def add_icons_to_slide(slide, icons, colors):
+    """スライドにアイコン（簡易図形）を追加する関数"""
+    try:
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.util import Inches
+        
+        # 各アイコンを配置
+        for i, icon_type in enumerate(icons[:3]):  # 最大3つ
+            x = Inches(0.5 + i * 1.5)
+            y = Inches(5.5)
+            cx, cy = Inches(0.8), Inches(0.8)
+            
+            # アイコンタイプに応じた図形
+            if icon_type == "target":
+                shape = slide.shapes.add_shape(MSO_SHAPE.TARGET, x, y, cx, cy)
+            elif icon_type == "growth":
+                shape = slide.shapes.add_shape(MSO_SHAPE.UP_ARROW, x, y, cx, cy)
+            elif icon_type == "innovation":
+                shape = slide.shapes.add_shape(MSO_SHAPE.LIGHTNING_BOLT, x, y, cx, cy)
+            elif icon_type == "data":
+                shape = slide.shapes.add_shape(MSO_SHAPE.CHART_X, x, y, cx, cy)
+            elif icon_type == "ai":
+                shape = slide.shapes.add_shape(MSO_SHAPE.GEAR, x, y, cx, cy)
+            elif icon_type == "money":
+                shape = slide.shapes.add_shape(MSO_SHAPE.DOLLAR_SIGN, x, y, cx, cy)
+            else:
+                shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, cx, cy)
+            
+            # 色の設定
+            if hasattr(shape, 'fill') and shape.fill:
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = colors[i % len(colors)]
+                
+    except Exception as e:
+        print(f"アイコン追加エラー: {e}")
 
 
 def cleanup_old_files():
@@ -431,13 +544,15 @@ async def generate_slides(
 
         # プロンプトを設定
         prompt = f"""
-あなたは優秀なプレゼンテーション専門家です。
-以下のテーマと要件に基づいて、プロフェッショナルなプレゼンテーションの構成と内容を作成してください。
+あなたは優秀なプレゼンテーション専門家兼データビジュアライザーです。
+以下のテーマと要件に基づいて、プロフェッショナルで視覚的に魅力的なプレゼンテーションの構成と内容を作成してください。
 
 **テーマ:** {request.theme}
+**スライド数:** {request.slideCount}
+**チャートを含む:** {"はい" if request.includeCharts else "いいえ"}
+**スタイル:** {request.style}
 
 **目的:** 企業の経営層に対し、AI導入の価値と具体的なメリットを伝え、導入検討を促す。
-
 **ターゲット:** AIに関する専門知識が少ない企業の経営層
 
 **要件:**
@@ -447,12 +562,32 @@ async def generate_slides(
   "slides": [
     {{
       "title": "スライドのタイトル",
-      "content": ["箇条書きの内容1", "箇条書きの内容2"]
+      "content": ["箇条書きの内容1", "箇条書きの内容2"],
+      "layout": "content", // title, content, two_content, chart, image
+      "visualElements": {{
+        "chartType": "bar", // bar, line, pie, none
+        "chartData": {{"labels": ["A", "B", "C"], "values": [10, 20, 30]}},
+        "icons": ["target", "growth", "innovation"],
+        "colors": ["#1f77b4", "#ff7f0e", "#2ca02c"]
+      }}
     }}
   ]
 }}
 
+**ビジュアル要素のガイドライン:**
+- layout: スライドのレイアウトタイプ（title, content, two_content, chart, image）
+- chartType: チャートタイプ（bar: 棒グラフ, line: 折れ線グラフ, pie: 円グラフ, none: なし）
+- chartData: チャート用のデータ（labelsとvaluesの配列）
+- icons: スライドに適したアイコン（target, growth, innovation, data, ai, moneyなど）
+- colors: テーマカラー（3-5色を指定）
+
+**スタイル別特徴:**
+- modern: ミニマリスト、鮮やかな色、シンプルなチャート
+- corporate: プロフェッショナル、青系、詳細なチャート
+- creative: カラフル、革新的なレイアウト、視覚効果重視
+
 以上の要件に基づいて、具体的で説得力のあるプレゼンテーションの内容を、指定された形式のJSONで生成してください。
+チャートデータは実際の統計値や論理的な数値を使用してください。
 """
 
         # Gemini APIを呼び出し
@@ -515,7 +650,7 @@ async def generate_slides(
             if not isinstance(slide_data, dict) or "slides" not in slide_data:
                 raise ValueError("Invalid JSON structure")
             # PowerPointファイルの生成
-            pptx_file = create_powerpoint(slide_data["slides"], request.theme)
+            pptx_file = create_powerpoint(slide_data["slides"], request.theme, request.style)
                 
             return {
                 "message": "スライド生成用のデータが正常に作成されました。",
