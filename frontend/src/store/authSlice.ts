@@ -153,7 +153,7 @@ const authSlice = createSlice({
       })
       .addCase(register.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Registration failed';
+        state.error = action.error.message || 'ユーザー登録に失敗しました';
       })
       // Login
       .addCase(login.pending, (state) => {
@@ -170,7 +170,7 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Login failed';
+        state.error = action.error.message || 'ログインに失敗しました';
       })
       // RefreshToken
       .addCase(refreshToken.pending, (state) => {
@@ -187,7 +187,7 @@ const authSlice = createSlice({
       })
       .addCase(refreshToken.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Token refresh failed';
+        state.error = action.error.message || 'トークンの更新に失敗しました';
         if (action.error.message?.includes('セッションの有効期限')) {
           // セッション期限切れの場合はログアウト
           state.token = null;

@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 依存パッケージをインストール
-COPY backend/requirements.txt .
+COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションコードをコピー
-COPY backend/ .
+COPY . .
 
 # ポート設定（Railwayが動的に割り当て）
 EXPOSE ${PORT:-8000}
