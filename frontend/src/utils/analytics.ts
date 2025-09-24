@@ -1,7 +1,7 @@
 // Google Analytics 4 イベント送信ユーティリティ
 declare global {
   interface Window {
-    gtag: (...args: any[]) => void;
+    gtag: (...args: unknown[]) => void;
   }
 }
 
@@ -11,7 +11,7 @@ export const ENABLE_GA = process.env.NEXT_PUBLIC_ENABLE_GA === 'true';
 // GA4イベント送信関数
 export const sendGAEvent = (
   action: string,
-  parameters: Record<string, any> = {}
+  parameters: Record<string, unknown> = {}
 ) => {
   if (ENABLE_GA && typeof window !== 'undefined' && window.gtag && GA_MEASUREMENT_ID) {
     window.gtag('event', action, {
@@ -31,7 +31,7 @@ export const sendGAPageView = (url: string) => {
 };
 
 // プレゼンテーション関連イベント
-export const trackPresentationEvent = (eventType: string, details?: Record<string, any>) => {
+export const trackPresentationEvent = (eventType: string, details?: Record<string, unknown>) => {
   sendGAEvent(`presentation_${eventType}`, {
     ...details,
     category: 'presentation'
@@ -39,7 +39,7 @@ export const trackPresentationEvent = (eventType: string, details?: Record<strin
 };
 
 // ユーザー認証関連イベント
-export const trackAuthEvent = (eventType: string, details?: Record<string, any>) => {
+export const trackAuthEvent = (eventType: string, details?: Record<string, unknown>) => {
   sendGAEvent(`auth_${eventType}`, {
     ...details,
     category: 'authentication'
@@ -47,7 +47,7 @@ export const trackAuthEvent = (eventType: string, details?: Record<string, any>)
 };
 
 // 招待コード関連イベント
-export const trackInviteEvent = (eventType: string, details?: Record<string, any>) => {
+export const trackInviteEvent = (eventType: string, details?: Record<string, unknown>) => {
   sendGAEvent(`invite_${eventType}`, {
     ...details,
     category: 'invitation'
