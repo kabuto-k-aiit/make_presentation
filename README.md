@@ -16,9 +16,11 @@ make_presentation/
 ├── frontend/          # Next.js フロントエンド
 ├── backend/          # FastAPI バックエンド
 ├── docs/            # ドキュメント
-│   ├── analytics-setup.md    # GA4導入ガイド
-│   ├── invite-code-management.md  # 招待コード運用ガイド
+│   ├── analytics-setup.md           # GA4導入ガイド
+│   ├── invite-code-management.md    # 招待コード運用ガイド
+│   ├── git-commit-template.md       # コミットテンプレートガイド
 │   └── ...           # その他のドキュメント
+├── .gitmessage      # Git コミットテンプレート
 └── docker/          # Docker関連ファイル
 ```
 
@@ -207,9 +209,25 @@ Content-Type: application/json
 
 ## コントリビューション
 
+### Git コミットメッセージ
+
+このプロジェクトでは統一されたコミットメッセージ形式を使用しています：
+
+```bash
+# テンプレート設定
+git config commit.template .gitmessage
+
+# コミット時にテンプレートが表示されます
+git commit
+```
+
+詳細は [Git コミットテンプレートガイド](./docs/git-commit-template.md) を参照してください。
+
+### プルリクエスト手順
+
 1. このリポジトリをフォーク
 2. 新しいブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add amazing feature'`)
+3. 変更をコミット (テンプレートに従って `git commit`)
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
 
