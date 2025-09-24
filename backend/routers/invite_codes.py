@@ -45,7 +45,7 @@ async def verify_invite_code(
     
     return {
         "valid": True,
-        "message": "Invite code is valid",
+        "message": "招待コードは有効です",
         "code": invite_data.code
     }
 

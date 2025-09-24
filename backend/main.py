@@ -232,7 +232,7 @@ async def download_file(
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             filename=clean_filename
         )
-    raise HTTPException(status_code=404, detail="File not found")
+    raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
 # 認証エンドポイント
 @app.post("/register", response_model=Token)
@@ -322,7 +322,7 @@ async def login(
         log_security_event(
             "login_failed",
             form_data.username,
-            "Invalid username or password",
+            "ユーザー名またはパスワードが間違っています",
             request.client.host
         )
         raise HTTPException(
@@ -335,7 +335,7 @@ async def login(
     log_security_event(
         "login_success",
         user.username,
-        "Successful login",
+        "ログイン成功",
         request.client.host
     )
 
@@ -362,7 +362,7 @@ async def refresh_token(request: Request, current_token: str):
         log_security_event(
             "token_refresh_failed",
             "unknown",
-            "Invalid refresh token",
+            "無効なリフレッシュトークン",
             request.client.host
         )
         raise HTTPException(
@@ -384,7 +384,7 @@ async def refresh_token(request: Request, current_token: str):
     log_security_event(
         "token_refresh_success",
         username,
-        "Token refreshed successfully",
+        "トークン更新成功",
         request.client.host
     )
 
@@ -409,7 +409,7 @@ async def generate_slides(
         # Gemini API key check
         print(f"API Key exists: {bool(GOOGLE_API_KEY)}")
         if not GOOGLE_API_KEY:
-            raise HTTPException(status_code=500, detail="API key is not configured")
+            raise HTTPException(status_code=500, detail="APIキーが設定されていません")
 
         # リクエストデータのログ出力
         print(f"Received request - Theme: {request.theme}, Slide Count: {request.slideCount}")
